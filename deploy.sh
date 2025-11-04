@@ -1,56 +1,26 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
 
-# Usage:
-#  ./deploy.sh              # build image from prebuilt JAR and run container
-#  ./deploy.sh build        # only build Docker image
-#  ./deploy.sh stop         # stop and remove container
-#  ./deploy.sh logs         # tail container logs
-#  PORT=10088 ./deploy.sh   # override port
-#  IMAGE_TAG=mytag ./deploy.sh  # override image tag
-#  JAVA_OPTS="-Xms256m -Xmx512m" ./deploy.sh
+BRANCH=${1:-master}
 
-APP_DIR="$(cd "$(dirname "$0")" && pwd)"
-IMAGE_NAME="location-server"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
-CONTAINER_NAME="location-server"
-PORT="${PORT:-10088}"
+git checkout "$BRANCH"
+git pull origin "$BRANCH"
 
-cd "$APP_DIR"
+mvn clean package -DskipTests
 
-# Build jar externally using Maven (outside Docker)
-if [[ "${1:-}" != "stop" && "${1:-}" != "logs" ]]; then
-  echo "Building JAR with Maven (external)..."
-  mvn -q -DskipTests -f "$APP_DIR/pom.xml" package
+IMAGE_NAME="location-app-server"
+FULL_IMAGE_NAME="${IMAGE_NAME}"
+
+if docker ps -q --filter "name=location-app-server" | grep -q .; then
+    echo "发现正在运行的容器 location-app-server，正在删除..."
+    docker rm -f location-app-server
 fi
 
-case "${1:-}" in
-  stop)
-    docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
-    echo "Container '$CONTAINER_NAME' stopped and removed."
-    ;;
-  logs)
-    docker logs -f "$CONTAINER_NAME"
-    ;;
-  build)
-    echo "Building Docker image ${IMAGE_NAME}:${IMAGE_TAG}..."
-    docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" .
-    ;;
-  *)
-    echo "Building Docker image ${IMAGE_NAME}:${IMAGE_TAG}..."
-    docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+if docker image inspect "$FULL_IMAGE_NAME" &> /dev/null; then
+    echo "发现已存在的镜像 $FULL_IMAGE_NAME，正在删除..."
+    docker rmi -f "$FULL_IMAGE_NAME"
+fi
 
-    echo "Stopping existing container (if any)..."
-    docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+docker build -t "$FULL_IMAGE_NAME" .
 
-    echo "Running container on port ${PORT}..."
-    docker run -d \
-      --name "$CONTAINER_NAME" \
-      -p "${PORT}:${PORT}" \
-      -e PORT="$PORT" \
-      -e JAVA_OPTS="${JAVA_OPTS:-}" \
-      "${IMAGE_NAME}:${IMAGE_TAG}"
-
-    echo "Container started. Use 'docker logs -f ${CONTAINER_NAME}' to view logs."
-    ;;
-}
+docker run -d --name location-app-server -p 10088:10088 \
+    "$FULL_IMAGE_NAME"
