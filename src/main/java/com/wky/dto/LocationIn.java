@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Data
 public class LocationIn {
     @NotBlank
@@ -14,4 +16,5 @@ public class LocationIn {
     private Double lng;
     private Double accuracy;
     private String provider;
+    private LocalDateTime time;
 }
