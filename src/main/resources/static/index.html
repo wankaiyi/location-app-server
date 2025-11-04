@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>位置上报仪表盘</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    .container { display: grid; grid-template-columns: 320px 1fr; height: 100%; }
+    .sidebar { border-right: 1px solid #e5e5e5; overflow-y: auto; padding: 12px; }
+    .map { height: 100%; }
+    .item { padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; }
+    .item:hover { background: #f7f7f7; }
+    .controls { display: flex; gap: 8px; margin-bottom: 8px; }
+    input, select, button { padding: 6px 10px; }
+    .footer { font-size: 12px; color: #888; margin-top: 8px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="sidebar">
+    <h3>设备位置列表</h3>
+    <div class="controls">
+      <input id="deviceId" placeholder="过滤设备ID" />
+      <button onclick="refresh()">刷新</button>
+    </div>
+    <div class="controls">
+      <label>自动刷新：</label>
+      <select id="autoRefresh">
+        <option value="0">关闭</option>
+        <option value="30">30s</option>
+        <option value="60">60s</option>
+        <option value="120">120s</option>
+      </select>
+    </div>
+    <div id="list"></div>
+    <div class="footer">上报接口：POST /api/location，JSON: {device_id, lat, lng, accuracy?, provider?}</div>
+  </div>
+  <div id="map" class="map"></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+  let map = L.map('map').setView([30.5728, 104.0668], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+  const markers = {};
+
+  async function refresh() {
+    const deviceId = document.getElementById('deviceId').value.trim();
+    const url = deviceId ? `/api/locations?device_id=${encodeURIComponent(deviceId)}` : '/api/locations';
+    const resp = await fetch(url);
+    const data = await resp.json();
+
+    const list = document.getElementById('list');
+    list.innerHTML = '';
+
+    // clear map markers
+    for (const k in markers) { map.removeLayer(markers[k]); }
+
+    data.forEach((item) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<b>${item.deviceId}</b> - ${item.lat.toFixed(5)}, ${item.lng.toFixed(5)} <br/><span style="color:#888">${new Date(item.createdAt).toLocaleString()}</span>`;
+      div.onclick = () => {
+        map.setView([item.lat, item.lng], 16);
+      };
+      list.appendChild(div);
+
+      const m = L.marker([item.lat, item.lng]).addTo(map);
+      m.bindPopup(`<b>${item.deviceId}</b><br/>精度: ${item.accuracy ?? '-'}<br/>来源: ${item.provider ?? '-'}<br/>时间: ${new Date(item.createdAt).toLocaleString()}`);
+      markers[item.id] = m;
+    });
+
+    if (data.length > 0) {
+      const last = data[0];
+      map.setView([last.lat, last.lng], 14);
+    }
+  }
+
+  let timer = null;
+  document.getElementById('autoRefresh').addEventListener('change', (e) => {
+    const sec = parseInt(e.target.value, 10);
+    if (timer) { clearInterval(timer); timer = null; }
+    if (sec > 0) {
+      timer = setInterval(refresh, sec * 1000);
+    }
+  });
+
+  refresh();
+</script>
+</body>
+</html>
