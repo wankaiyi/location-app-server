@@ -15,6 +15,7 @@
     .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
     input, select, button { padding: 6px 10px; }
     .badge { display:inline-block; background:#eef; color:#336; padding:2px 6px; border-radius:10px; font-size:12px; margin-left:6px; }
+    .notify { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.2); display: none; z-index: 9999; max-width: 420px; text-align: center; }
   </style>
 </head>
 <body>
@@ -42,6 +43,8 @@
   </div>
   <div id="map" class="map"></div>
 </div>
+<!-- 新增：全局提示容器 -->
+<div id="notify" class="notify" role="status" aria-live="polite"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script>
   let map = L.map('map').setView([30.5728, 104.0668], 12);
@@ -54,6 +57,17 @@
   let selectedDevice = null;
   let trackLayer = null;
   let timer = null;
+  // 新增：非阻塞提示函数
+  let notifyTimer = null;
+  function showMessage(msg, type = 'info') {
+    const box = document.getElementById('notify');
+    const bg = type === 'error' ? '#e74c3c' : (type === 'warning' ? '#f59e0b' : (type === 'success' ? '#10b981' : 'rgba(0,0,0,0.85)'));
+    box.style.background = bg;
+    box.textContent = msg;
+    box.style.display = 'block';
+    if (notifyTimer) { clearTimeout(notifyTimer); }
+    notifyTimer = setTimeout(() => { box.style.display = 'none'; }, 3000);
+  }
 
   async function loadDevices() {
     const resp = await fetch('/api/devices');
@@ -86,8 +100,8 @@
   async function loadTracks() {
     const dateInput = document.getElementById('date');
     const day = dateInput.value;
-    if (!selectedDevice) { alert('请先选择设备'); return; }
-    if (!day) { alert('请选择日期'); return; }
+    if (!selectedDevice) { showMessage('请先选择设备', 'warning'); return; }
+    if (!day) { showMessage('请选择日期', 'warning'); return; }
     const url = `/api/device-day?deviceId=${encodeURIComponent(selectedDevice)}&date=${encodeURIComponent(day)}`;
     const resp = await fetch(url);
     const data = await resp.json();
@@ -96,7 +110,7 @@
 
     const points = data.map(p => [p.lat, p.lng]);
     if (points.length === 0) {
-      alert('该日无轨迹数据');
+      showMessage('该日无轨迹数据', 'info');
       return;
     }
 
