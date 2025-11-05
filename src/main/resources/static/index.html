@@ -3,27 +3,31 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>位置上报仪表盘</title>
+  <title>设备轨迹后台管理</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
   <style>
     html, body { height: 100%; margin: 0; }
-    .container { display: grid; grid-template-columns: 320px 1fr; height: 100%; }
+    .container { display: grid; grid-template-columns: 360px 1fr; height: 100%; }
     .sidebar { border-right: 1px solid #e5e5e5; overflow-y: auto; padding: 12px; }
     .map { height: 100%; }
     .item { padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; }
     .item:hover { background: #f7f7f7; }
-    .controls { display: flex; gap: 8px; margin-bottom: 8px; }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
     input, select, button { padding: 6px 10px; }
-    .footer { font-size: 12px; color: #888; margin-top: 8px; }
+    .badge { display:inline-block; background:#eef; color:#336; padding:2px 6px; border-radius:10px; font-size:12px; margin-left:6px; }
   </style>
 </head>
 <body>
 <div class="container">
   <div class="sidebar">
-    <h3>设备位置列表</h3>
+    <h3>设备列表</h3>
     <div class="controls">
-      <input id="deviceId" placeholder="过滤设备ID" />
-      <button onclick="refresh()">刷新</button>
+      <input id="filter" placeholder="过滤设备ID" />
+      <button onclick="loadDevices()">刷新设备</button>
+    </div>
+    <div class="controls">
+      <input id="date" type="date" />
+      <button onclick="loadTracks()">查看轨迹</button>
     </div>
     <div class="controls">
       <label>自动刷新：</label>
@@ -34,8 +38,7 @@
         <option value="120">120s</option>
       </select>
     </div>
-    <div id="list"></div>
-    <div class="footer">上报接口：POST /api/location，JSON: {deviceId, lat, lng, accuracy?, provider?}</div>
+    <div id="devices"></div>
   </div>
   <div id="map" class="map"></div>
 </div>
@@ -46,50 +49,95 @@
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
-  const markers = {};
 
-  async function refresh() {
-    const deviceId = document.getElementById('deviceId').value.trim();
-    const url = deviceId ? `/api/locations?deviceId=${encodeURIComponent(deviceId)}` : '/api/locations';
+  let deviceList = [];
+  let selectedDevice = null;
+  let trackLayer = null;
+  let timer = null;
+
+  async function loadDevices() {
+    const resp = await fetch('/api/devices');
+    const data = await resp.json();
+    deviceList = data;
+    renderDevices();
+  }
+
+  function renderDevices() {
+    const filter = document.getElementById('filter').value.trim().toLowerCase();
+    const container = document.getElementById('devices');
+    container.innerHTML = '';
+    deviceList
+      .filter(d => !filter || d.toLowerCase().includes(filter))
+      .forEach(d => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.textContent = d;
+        if (selectedDevice === d) {
+          const b = document.createElement('span');
+          b.className = 'badge';
+          b.textContent = '已选';
+          div.appendChild(b);
+        }
+        div.onclick = () => { selectedDevice = d; renderDevices(); };
+        container.appendChild(div);
+      });
+  }
+
+  async function loadTracks() {
+    const dateInput = document.getElementById('date');
+    const day = dateInput.value;
+    if (!selectedDevice) { alert('请先选择设备'); return; }
+    if (!day) { alert('请选择日期'); return; }
+    const url = `/api/device-day?deviceId=${encodeURIComponent(selectedDevice)}&date=${encodeURIComponent(day)}`;
     const resp = await fetch(url);
     const data = await resp.json();
 
-    const list = document.getElementById('list');
-    list.innerHTML = '';
+    if (trackLayer) { map.removeLayer(trackLayer); trackLayer = null; }
 
-    // clear map markers
-    for (const k in markers) { map.removeLayer(markers[k]); }
+    const points = data.map(p => [p.lat, p.lng]);
+    if (points.length === 0) {
+      alert('该日无轨迹数据');
+      return;
+    }
 
-    data.forEach((item) => {
-      const div = document.createElement('div');
-      div.className = 'item';
-      div.innerHTML = `<b>${item.deviceId}</b> - ${item.lat.toFixed(5)}, ${item.lng.toFixed(5)} <br/><span style="color:#888">${new Date(item.createdAt).toLocaleString()}</span>`;
-      div.onclick = () => {
-        map.setView([item.lat, item.lng], 16);
-      };
-      list.appendChild(div);
-
-      const m = L.marker([item.lat, item.lng]).addTo(map);
-      m.bindPopup(`<b>${item.deviceId}</b><br/>精度: ${item.accuracy ?? '-'}<br/>来源: ${item.provider ?? '-'}<br/>时间: ${new Date(item.createdAt).toLocaleString()}`);
-      markers[item.id] = m;
+    trackLayer = L.layerGroup();
+    points.forEach((coord, idx) => {
+      const marker = L.circleMarker(coord, {
+        radius: 4,
+        color: idx === 0 ? '#2ecc71' : (idx === points.length - 1 ? '#e74c3c' : '#3498db')
+      }).bindPopup(() => {
+        const item = data[idx];
+        const dt = new Date(item.createdAt).toLocaleString();
+        return `<b>${item.deviceId}</b><br/>时间: ${dt}<br/>`;
+      });
+      trackLayer.addLayer(marker);
     });
 
-    if (data.length > 0) {
-      const last = data[0];
-      map.setView([last.lat, last.lng], 14);
-    }
+    const polyline = L.polyline(points, { color: '#3b82f6', weight: 3, opacity: 0.8 });
+    trackLayer.addLayer(polyline);
+    trackLayer.addTo(map);
+
+    const bounds = L.latLngBounds(points);
+    map.fitBounds(bounds.pad(0.2));
   }
 
-  let timer = null;
   document.getElementById('autoRefresh').addEventListener('change', (e) => {
     const sec = parseInt(e.target.value, 10);
     if (timer) { clearInterval(timer); timer = null; }
     if (sec > 0) {
-      timer = setInterval(refresh, sec * 1000);
+      timer = setInterval(() => {
+        loadDevices();
+        if (selectedDevice && document.getElementById('date').value) {
+          loadTracks();
+        }
+      }, sec * 1000);
     }
   });
 
-  refresh();
+  // 初始化日期为今天
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('date').value = today;
+  loadDevices();
 </script>
 </body>
 </html>
