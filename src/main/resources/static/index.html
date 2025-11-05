@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>设备轨迹后台管理</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
   <style>
     html, body { height: 100%; margin: 0; }
     .container { display: grid; grid-template-columns: 360px 1fr; height: 100%; }
@@ -45,14 +45,45 @@
 </div>
 <!-- 新增：全局提示容器 -->
 <div id="notify" class="notify" role="status" aria-live="polite"></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-polylinedecorator/1.1.0/leaflet.polylineDecorator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.min.js" crossorigin=""></script>
 <script>
   let map = L.map('map').setView([30.5728, 104.0668], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors'
+  // 高德地图瓦片服务（标准地图）
+  L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+    subdomains: ['1', '2', '3', '4'],
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://www.amap.com/">高德地图</a>'
   }).addTo(map);
+
+  // WGS-84 转 GCJ-02 坐标转换函数（GPS坐标转高德地图坐标）
+  function wgs84ToGcj02(wgsLat, wgsLng) {
+    const a = 6378245.0;
+    const ee = 0.00669342162296594323;
+    let dLat = transformLat(wgsLng - 105.0, wgsLat - 35.0);
+    let dLng = transformLng(wgsLng - 105.0, wgsLat - 35.0);
+    const radLat = wgsLat / 180.0 * Math.PI;
+    let magic = Math.sin(radLat);
+    magic = 1 - ee * magic * magic;
+    const sqrtMagic = Math.sqrt(magic);
+    dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * Math.PI);
+    dLng = (dLng * 180.0) / (a / sqrtMagic * Math.cos(radLat) * Math.PI);
+    return [wgsLat + dLat, wgsLng + dLng];
+  }
+  function transformLat(lng, lat) {
+    let ret = -100.0 + 2.0 * lng + 3.0 * lat + 0.2 * lat * lat + 0.1 * lng * lat + 0.2 * Math.sqrt(Math.abs(lng));
+    ret += (20.0 * Math.sin(6.0 * lng * Math.PI) + 20.0 * Math.sin(2.0 * lng * Math.PI)) * 2.0 / 3.0;
+    ret += (20.0 * Math.sin(lat * Math.PI) + 40.0 * Math.sin(lat / 3.0 * Math.PI)) * 2.0 / 3.0;
+    ret += (160.0 * Math.sin(lat / 12.0 * Math.PI) + 320 * Math.sin(lat * Math.PI / 30.0)) * 2.0 / 3.0;
+    return ret;
+  }
+  function transformLng(lng, lat) {
+    let ret = 300.0 + lng + 2.0 * lat + 0.1 * lng * lng + 0.1 * lng * lat + 0.1 * Math.sqrt(Math.abs(lng));
+    ret += (20.0 * Math.sin(6.0 * lng * Math.PI) + 20.0 * Math.sin(2.0 * lng * Math.PI)) * 2.0 / 3.0;
+    ret += (20.0 * Math.sin(lng * Math.PI) + 40.0 * Math.sin(lng / 3.0 * Math.PI)) * 2.0 / 3.0;
+    ret += (150.0 * Math.sin(lng / 12.0 * Math.PI) + 300.0 * Math.sin(lng / 30.0 * Math.PI)) * 2.0 / 3.0;
+    return ret;
+  }
 
   let deviceList = [];
   let selectedDevice = null;
@@ -109,7 +140,11 @@
 
     if (trackLayer) { map.removeLayer(trackLayer); trackLayer = null; }
 
-    const points = data.map(p => [p.lat, p.lng]);
+    // 将 WGS-84 坐标转换为 GCJ-02 坐标（高德地图坐标系）
+    const points = data.map(p => {
+      const [gcjLat, gcjLng] = wgs84ToGcj02(p.lat, p.lng);
+      return [gcjLat, gcjLng];
+    });
     if (points.length === 0) {
       showMessage('该日无轨迹数据', 'info');
       return;
