@@ -1,12 +1,12 @@
 package com.wky.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.wky.dto.LocationIn;
 import com.wky.entity.Location;
 import com.wky.mapper.LocationMapper;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,14 +16,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api")
+@Slf4j
 public class LocationController {
 
     @Autowired
@@ -53,6 +56,8 @@ public class LocationController {
 
     @PostMapping("/location")
     public ResponseEntity<Void> postLocation(@Valid @RequestBody LocationIn in) {
+        String traceId = UUID.randomUUID().toString();
+        log.info("request: {}, traceId: {}", in, traceId);
         LocalDateTime time = in.getTime().truncatedTo(ChronoUnit.MINUTES);
         if (!shouldProcess(time)) {
             return ResponseEntity.noContent().build();
@@ -64,22 +69,24 @@ public class LocationController {
         loc.setAccuracy(in.getAccuracy());
         loc.setProvider(in.getProvider());
         loc.setCreatedAt(time);
+        loc.setDeleted(0);
         locationMapper.insert(loc);
         return ResponseEntity.ok().build();
     }
 
-    @GetMapping("/locations")
-    public List<Location> list(@RequestParam(required = false) String device_id,
-                               @RequestParam(defaultValue = "200") Integer limit,
-                               LocalDateTime time) {
-        QueryWrapper<Location> qw = new QueryWrapper<>();
-        if (device_id != null && !device_id.isEmpty()) {
-            qw.eq("device_id", device_id);
-        }
-        if (time != null) {
-            qw.in("created_at", time);
-        }
-        qw.orderByDesc("created_at").last("limit " + limit);
-        return locationMapper.selectList(qw);
+    // 新增：查询所有设备ID（去重）
+    @GetMapping("/devices")
+    public List<String> listDevices() {
+        return locationMapper.selectDistinctDeviceIds();
+    }
+
+    // 新增：按天查询某设备的轨迹
+    @GetMapping("/device-day")
+    public List<Location> listDeviceDay(@RequestParam("deviceId") String deviceId,
+                                        @RequestParam("date") String date) {
+        LocalDate day = LocalDate.parse(date); // 格式: YYYY-MM-DD
+        LocalDateTime start = day.atStartOfDay();
+        LocalDateTime end = day.plusDays(1).atStartOfDay();
+        return locationMapper.selectByDeviceAndDate(deviceId, start, end);
     }
 }

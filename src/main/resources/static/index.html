@@ -35,7 +35,7 @@
       </select>
     </div>
     <div id="list"></div>
-    <div class="footer">上报接口：POST /api/location，JSON: {device_id, lat, lng, accuracy?, provider?}</div>
+    <div class="footer">上报接口：POST /api/location，JSON: {deviceId, lat, lng, accuracy?, provider?}</div>
   </div>
   <div id="map" class="map"></div>
 </div>
@@ -50,7 +50,7 @@
 
   async function refresh() {
     const deviceId = document.getElementById('deviceId').value.trim();
-    const url = deviceId ? `/api/locations?device_id=${encodeURIComponent(deviceId)}` : '/api/locations';
+    const url = deviceId ? `/api/locations?deviceId=${encodeURIComponent(deviceId)}` : '/api/locations';
     const resp = await fetch(url);
     const data = await resp.json();
 
