@@ -46,6 +46,7 @@
 <!-- 新增：全局提示容器 -->
 <div id="notify" class="notify" role="status" aria-live="polite"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-polylinedecorator/1.1.0/leaflet.polylineDecorator.min.js"></script>
 <script>
   let map = L.map('map').setView([30.5728, 104.0668], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -129,6 +130,13 @@
 
     const polyline = L.polyline(points, { color: '#3b82f6', weight: 3, opacity: 0.8 });
     trackLayer.addLayer(polyline);
+    // 使用箭头装饰显示方向
+    const decorator = L.polylineDecorator(polyline, {
+      patterns: [
+        { offset: 0, repeat: '80%', symbol: L.Symbol.arrowHead({ pixelSize: 10, pathOptions: { color: '#f59e0b', fillOpacity: 1, weight: 0 } }) }
+      ]
+    });
+    trackLayer.addLayer(decorator);
     trackLayer.addTo(map);
 
     const bounds = L.latLngBounds(points);
