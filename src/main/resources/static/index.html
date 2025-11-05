@@ -165,10 +165,30 @@
 
     const polyline = L.polyline(points, { color: '#3b82f6', weight: 3, opacity: 0.8 });
     trackLayer.addLayer(polyline);
-    // 使用箭头装饰显示方向
+    
+    // 优化箭头装饰显示方向
+    // 根据轨迹长度动态调整箭头间距
+    const arrowSpacing = points.length > 100 ? '15%' : (points.length > 50 ? '12%' : '10%');
+    const arrowSize = points.length > 100 ? 18 : 16;
+    
     const decorator = L.polylineDecorator(polyline, {
       patterns: [
-        { offset: 0, repeat: '80%', symbol: L.Symbol.arrowHead({ pixelSize: 10, pathOptions: { color: '#f59e0b', fillOpacity: 1, weight: 0 } }) }
+        {
+          offset: '5%',
+          repeat: arrowSpacing,
+          symbol: L.Symbol.arrowHead({
+            pixelSize: arrowSize,
+            polygon: false,
+            pathOptions: {
+              stroke: true,
+              color: '#ea580c',
+              weight: 3,
+              fillColor: '#f97316',
+              fillOpacity: 1,
+              opacity: 1
+            }
+          })
+        }
       ]
     });
     trackLayer.addLayer(decorator);
