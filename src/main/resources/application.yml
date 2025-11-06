@@ -1,4 +1,22 @@
 spring:
+  ai:
+    openai:
+      base-url: https://api.deepseek.com/v1/
+      api-key: ${apikey}
+      chat:
+#        completions-path: chat/completions # 重新设置智谱AI的聊天模型路径，覆盖openAi默认配置
+        options:
+          model: deepseek-chat
+#    mcp:
+#      client:
+#        enabled: true
+#        name: my-mcp-client
+#        version: 1.0.0
+#        request-timeout: 10s
+#        sse:
+#          connections:
+#            server1:
+#              url: http://localhost:8080
   datasource:
     url: jdbc:mysql://117.72.48.233:3308/location_app?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
