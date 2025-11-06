@@ -4,7 +4,7 @@ spring:
       base-url: https://api.deepseek.com/v1/
       api-key: ${apikey}
       chat:
-#        completions-path: chat/completions # 重新设置智谱AI的聊天模型路径，覆盖openAi默认配置
+        completions-path: chat/completions # 重新设置智谱AI的聊天模型路径，覆盖openAi默认配置
         options:
           model: deepseek-chat
 #    mcp:
@@ -32,3 +32,6 @@ server:
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
+
+gaode:
+  key: ${gaode_key}

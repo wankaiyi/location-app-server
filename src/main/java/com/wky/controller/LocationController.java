@@ -1,14 +1,33 @@
 package com.wky.controller;
 
+import cn.hutool.json.JSONUtil;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.wky.dto.LocationIn;
 import com.wky.entity.Location;
+import com.wky.dto.LocationDTO;
 import com.wky.mapper.LocationMapper;
+import com.wky.tools.DateTimeTools;
+import com.wky.tools.MapTools;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.ai.model.tool.DefaultToolCallingManager;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionResult;
+import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.ai.util.JacksonUtils;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,18 +40,23 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api")
 @Slf4j
+@RequiredArgsConstructor
 public class LocationController {
 
-    @Autowired
-    private LocationMapper locationMapper;
+    private final LocationMapper locationMapper;
+    private final ChatModel chatModel;
+    private final MapTools mapTools;
 
-    private static final Cache<String, Boolean> requestCache= CacheBuilder.newBuilder()
+    private final ToolCallingManager toolCallingManager = DefaultToolCallingManager.builder().build();
+    private final ChatMemory chatMemory = MessageWindowChatMemory.builder().build();
+    private static final Cache<String, Boolean> requestCache = CacheBuilder.newBuilder()
             .expireAfterWrite(1, TimeUnit.MINUTES) // 1分钟后自动过期
             .concurrencyLevel(Runtime.getRuntime().availableProcessors())
             .build();
@@ -40,6 +64,7 @@ public class LocationController {
 
     /**
      * 检查是否在同一分钟内已经处理过相同标识的请求
+     *
      * @return true-可以处理(未重复), false-重复请求
      */
     public boolean shouldProcess(LocalDateTime time) {
@@ -88,5 +113,81 @@ public class LocationController {
         LocalDateTime start = day.atStartOfDay();
         LocalDateTime end = day.plusDays(1).atStartOfDay();
         return locationMapper.selectByDeviceAndDate(deviceId, start, end);
+    }
+
+
+    PromptTemplate promptTemplate = new PromptTemplate(
+            """
+                    # 角色
+                    你是人生足迹APP的智能助手，你的任务是分析用户的轨迹数据，并给出一个总结报告。
+                    
+                    # 任务
+                    以下是用户{currentDate}的轨迹数据，这个数据是一个list，每个list的元素包含经纬度和时间，你需要根据以下数据来进行分析，总结用户的生活习惯，为用户提供更加智能的服务。
+                    
+                    {locations}
+                    
+                    # 步骤
+                    1. 调用工具获取每个item中的经纬度所在的具体位置
+                    2. 根据这些具体位置以及时间生成一个总结报告
+                    
+                    # 结果
+                    输出结果使用markdown格式即可
+                    """
+    );
+
+    @PostMapping("/agent-summary")
+    public ResponseEntity<String> agentSummary(@RequestParam("deviceId") String deviceId) {
+//        ChatClient chatClient = ChatClient.builder(chatModel)
+////                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
+//                .build();
+//
+//        ChatResponse chatResponse = chatClient
+//                .prompt(message)
+//                .tools(new DateTimeTools())
+//                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "11"))
+//                .call()
+//                .chatResponse();
+        // 1. 获取今天的经纬度数据
+        List<Location> locations = listDeviceDay(deviceId, LocalDate.now().toString());
+        if (CollectionUtils.isEmpty(locations)) {
+            return ResponseEntity.ok("今天没有轨迹数据");
+        }
+        List<LocationDTO> locationDTOS = locations.stream()
+                .map(loc -> new LocationDTO()
+                        .setLat(loc.getLat())
+                        .setLng(loc.getLng())
+                        .setTime(loc.getCreatedAt()))
+                .toList();
+
+        String conversationId = UUID.randomUUID().toString();
+
+        ChatOptions chatOptions = ToolCallingChatOptions.builder()
+                .toolCallbacks(ToolCallbacks.from(mapTools))
+                .internalToolExecutionEnabled(false)
+                .build();
+        String systemMessageContent = promptTemplate.render(Map.of(
+                "currentDate", LocalDate.now().toString(),
+                "locations", JSONUtil.toJsonStr(locationDTOS)
+        ));
+        SystemMessage systemMessage = new SystemMessage(systemMessageContent);
+        Prompt prompt = new Prompt(systemMessage, chatOptions);
+        chatMemory.add(conversationId, prompt.getInstructions());
+
+        Prompt promptWithMemory = new Prompt(chatMemory.get(conversationId), chatOptions);
+        ChatResponse chatResponse = chatModel.call(promptWithMemory);
+        chatMemory.add(conversationId, chatResponse.getResult().getOutput());
+
+        while (chatResponse.hasToolCalls()) {
+            ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(promptWithMemory,
+                    chatResponse);
+            chatMemory.add(conversationId, toolExecutionResult.conversationHistory()
+                    .getLast());
+            promptWithMemory = new Prompt(chatMemory.get(conversationId), chatOptions);
+            chatResponse = chatModel.call(promptWithMemory);
+            chatMemory.add(conversationId, chatResponse.getResult().getOutput());
+        }
+
+        String result = chatMemory.get(conversationId).getLast().getText();
+        return ResponseEntity.ok(result);
     }
 }
