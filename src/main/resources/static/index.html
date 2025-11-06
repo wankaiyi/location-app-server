@@ -13,9 +13,41 @@
     .item { padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; }
     .item:hover { background: #f7f7f7; }
     .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+    .controls-full { display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 8px; }
     input, select, button { padding: 6px 10px; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
     .badge { display:inline-block; background:#eef; color:#336; padding:2px 6px; border-radius:10px; font-size:12px; margin-left:6px; }
     .notify { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 10px 14px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.2); display: none; z-index: 9999; max-width: 420px; text-align: center; }
+    .modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+    .modal-content { background-color: #fff; margin: 5% auto; padding: 20px; border-radius: 8px; width: 80%; max-width: 800px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,.3); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #eee; padding-bottom: 12px; }
+    .modal-header h2 { margin: 0; font-size: 20px; }
+    .close { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1; }
+    .close:hover { color: #000; }
+    .report-content { line-height: 1.6; }
+    .report-content h1, .report-content h2, .report-content h3 { margin-top: 20px; margin-bottom: 10px; }
+    .report-content p { margin-bottom: 12px; }
+    .report-content ul, .report-content ol { margin-bottom: 12px; padding-left: 24px; }
+    .report-content code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+    .report-content pre { background: #f4f4f4; padding: 12px; border-radius: 4px; overflow-x: auto; }
+    .loading { text-align: center; padding: 40px; color: #666; }
+    .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .report-status { position: fixed; bottom: 20px; right: 20px; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; box-shadow: 0 4px 12px rgba(0,0,0,.15); z-index: 10001; min-width: 280px; display: none; }
+    .report-status.show { display: block; }
+    .report-status-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .report-status-title { font-weight: bold; color: #333; }
+    .report-status-close { color: #999; cursor: pointer; font-size: 18px; line-height: 1; }
+    .report-status-close:hover { color: #333; }
+    .report-status-content { font-size: 14px; color: #666; margin-bottom: 8px; }
+    .report-status-actions { display: flex; gap: 8px; }
+    .report-status-btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .report-status-btn-primary { background: #3498db; color: white; }
+    .report-status-btn-primary:hover { background: #2980b9; }
+    .report-status-btn-secondary { background: #ecf0f1; color: #333; }
+    .report-status-btn-secondary:hover { background: #d5dbdb; }
+    .report-status-progress { display: flex; align-items: center; gap: 8px; }
+    .report-status-spinner { border: 2px solid #f3f3f3; border-top: 2px solid #3498db; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; }
   </style>
 </head>
 <body>
@@ -29,6 +61,9 @@
     <div class="controls">
       <input id="date" type="date" />
       <button onclick="loadTracks()">查看轨迹</button>
+    </div>
+    <div class="controls-full">
+      <button id="generateReportBtn" onclick="generateReport()" style="background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">生成报告</button>
     </div>
     <div class="controls">
       <label>自动刷新：</label>
@@ -45,8 +80,36 @@
 </div>
 <!-- 新增：全局提示容器 -->
 <div id="notify" class="notify" role="status" aria-live="polite"></div>
+<!-- 报告生成状态通知栏 -->
+<div id="reportStatus" class="report-status">
+  <div class="report-status-header">
+    <span class="report-status-title">报告生成中</span>
+    <span class="report-status-close" onclick="closeReportStatus()">&times;</span>
+  </div>
+  <div class="report-status-content" id="reportStatusContent">
+    <div class="report-status-progress">
+      <div class="report-status-spinner"></div>
+      <span>正在生成报告，您可以继续操作其他功能...</span>
+    </div>
+  </div>
+  <div class="report-status-actions" id="reportStatusActions" style="display: none;">
+    <button class="report-status-btn report-status-btn-primary" onclick="viewReport()">查看报告</button>
+    <button class="report-status-btn report-status-btn-secondary" onclick="closeReportStatus()">关闭</button>
+  </div>
+</div>
+<!-- 报告模态框 -->
+<div id="reportModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>轨迹分析报告</h2>
+      <span class="close" onclick="closeReportModal()">&times;</span>
+    </div>
+    <div id="reportBody" class="report-content"></div>
+  </div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.min.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 <script>
   let map = L.map('map').setView([30.5728, 104.0668], 12);
   // 高德地图瓦片服务（标准地图）
@@ -91,6 +154,9 @@
   let timer = null;
   // 新增：非阻塞提示函数
   let notifyTimer = null;
+  // 报告相关状态
+  let currentReport = null;
+  let isGeneratingReport = false;
   function showMessage(msg, type = 'info') {
     const box = document.getElementById('notify');
     const bg = type === 'error' ? '#e74c3c' : (type === 'warning' ? '#f59e0b' : (type === 'success' ? '#10b981' : 'rgba(0,0,0,0.85)'));
@@ -210,6 +276,168 @@
       }, sec * 1000);
     }
   });
+
+  // 生成报告（异步非阻塞）
+  async function generateReport() {
+    const dateInput = document.getElementById('date');
+    const day = dateInput.value;
+    if (!selectedDevice) {
+      showMessage('请先选择设备', 'warning');
+      return;
+    }
+    if (!day) {
+      showMessage('请选择日期', 'warning');
+      return;
+    }
+
+    // 如果正在生成，提示用户
+    if (isGeneratingReport) {
+      showMessage('报告正在生成中，请稍候...', 'info');
+      showReportStatus();
+      return;
+    }
+
+    const btn = document.getElementById('generateReportBtn');
+    isGeneratingReport = true;
+    currentReport = null;
+    
+    // 更新按钮状态
+    btn.disabled = true;
+    btn.textContent = '生成中...';
+    
+    // 显示状态通知栏
+    showReportStatus();
+    
+    // 异步生成报告，不阻塞用户操作
+    (async () => {
+      try {
+        const url = `/api/agent-summary?deviceId=${encodeURIComponent(selectedDevice)}&date=${encodeURIComponent(day)}`;
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!resp.ok) {
+          throw new Error(`HTTP error! status: ${resp.status}`);
+        }
+
+        const reportText = await resp.text();
+        currentReport = reportText;
+        
+        // 更新状态通知栏为成功状态
+        updateReportStatus('success', '报告生成完成！');
+        showMessage('报告生成成功，点击查看按钮查看', 'success');
+        
+      } catch (error) {
+        console.error('生成报告失败:', error);
+        currentReport = null;
+        updateReportStatus('error', '报告生成失败: ' + error.message);
+        showMessage('生成报告失败: ' + error.message, 'error');
+      } finally {
+        isGeneratingReport = false;
+        btn.disabled = false;
+        btn.textContent = '生成报告';
+      }
+    })();
+  }
+
+  // 显示报告生成状态通知栏
+  function showReportStatus() {
+    const statusDiv = document.getElementById('reportStatus');
+    const statusContent = document.getElementById('reportStatusContent');
+    const statusActions = document.getElementById('reportStatusActions');
+    const statusTitle = statusDiv.querySelector('.report-status-title');
+    
+    if (isGeneratingReport) {
+      statusTitle.textContent = '报告生成中';
+      statusContent.innerHTML = '<div class="report-status-progress"><div class="report-status-spinner"></div><span>正在生成报告，您可以继续操作其他功能...</span></div>';
+      statusActions.style.display = 'none';
+    } else if (currentReport) {
+      statusTitle.textContent = '报告已生成';
+      statusContent.textContent = '报告生成完成，点击查看按钮查看详细内容';
+      statusActions.style.display = 'flex';
+    }
+    
+    statusDiv.classList.add('show');
+  }
+
+  // 更新报告状态
+  function updateReportStatus(status, message) {
+    const statusDiv = document.getElementById('reportStatus');
+    const statusContent = document.getElementById('reportStatusContent');
+    const statusActions = document.getElementById('reportStatusActions');
+    const statusTitle = statusDiv.querySelector('.report-status-title');
+    
+    if (status === 'success') {
+      statusTitle.textContent = '报告已生成';
+      statusContent.textContent = message;
+      statusActions.style.display = 'flex';
+      // 确保查看按钮正确设置
+      const viewBtn = statusActions.querySelector('.report-status-btn-primary');
+      if (viewBtn) {
+        viewBtn.textContent = '查看报告';
+        viewBtn.onclick = viewReport;
+      }
+    } else if (status === 'error') {
+      statusTitle.textContent = '生成失败';
+      statusContent.innerHTML = `<span style="color: #e74c3c;">${message}</span>`;
+      statusActions.style.display = 'flex';
+      const viewBtn = statusActions.querySelector('.report-status-btn-primary');
+      if (viewBtn) {
+        viewBtn.textContent = '重试';
+        viewBtn.onclick = function() {
+          closeReportStatus();
+          generateReport();
+        };
+      }
+    }
+    
+    statusDiv.classList.add('show');
+  }
+
+  // 关闭报告状态通知栏
+  function closeReportStatus() {
+    const statusDiv = document.getElementById('reportStatus');
+    statusDiv.classList.remove('show');
+  }
+
+  // 查看报告
+  function viewReport() {
+    if (!currentReport) {
+      showMessage('报告尚未生成', 'warning');
+      return;
+    }
+    
+    const modal = document.getElementById('reportModal');
+    const reportBody = document.getElementById('reportBody');
+    
+    // 使用 marked 渲染 markdown
+    if (typeof marked !== 'undefined') {
+      reportBody.innerHTML = marked.parse(currentReport);
+    } else {
+      // 如果 marked 未加载，直接显示文本
+      reportBody.innerHTML = `<pre>${currentReport}</pre>`;
+    }
+    
+    modal.style.display = 'block';
+    closeReportStatus();
+  }
+
+  // 关闭报告模态框
+  function closeReportModal() {
+    const modal = document.getElementById('reportModal');
+    modal.style.display = 'none';
+  }
+
+  // 点击模态框外部关闭
+  window.onclick = function(event) {
+    const modal = document.getElementById('reportModal');
+    if (event.target === modal) {
+      closeReportModal();
+    }
+  }
 
   // 初始化日期为今天
   const today = new Date().toISOString().slice(0,10);
