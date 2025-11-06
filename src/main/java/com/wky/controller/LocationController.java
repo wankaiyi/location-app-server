@@ -136,19 +136,10 @@ public class LocationController {
     );
 
     @PostMapping("/agent-summary")
-    public ResponseEntity<String> agentSummary(@RequestParam("deviceId") String deviceId) {
-//        ChatClient chatClient = ChatClient.builder(chatModel)
-////                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
-//                .build();
-//
-//        ChatResponse chatResponse = chatClient
-//                .prompt(message)
-//                .tools(new DateTimeTools())
-//                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "11"))
-//                .call()
-//                .chatResponse();
+    public ResponseEntity<String> agentSummary(@RequestParam("deviceId") String deviceId,
+                                               @RequestParam("date") String date) {
         // 1. 获取今天的经纬度数据
-        List<Location> locations = listDeviceDay(deviceId, LocalDate.now().toString());
+        List<Location> locations = listDeviceDay(deviceId, date);
         if (CollectionUtils.isEmpty(locations)) {
             return ResponseEntity.ok("今天没有轨迹数据");
         }
