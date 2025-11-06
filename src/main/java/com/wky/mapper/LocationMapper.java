@@ -16,7 +16,7 @@ public interface LocationMapper extends BaseMapper<Location> {
     List<String> selectDistinctDeviceIds();
 
     // 返回某设备在指定日期范围内的所有轨迹（按时间升序）
-    @Select("select * from locations where device_id = #{deviceId} and is_deleted = 0 and created_at >= #{start} and created_at < #{end} order by created_at asc")
+    @Select("select * from locations where device_id = #{deviceId} and is_deleted = 0 and created_at >= #{start} and created_at < #{end} and provider not in ('unknown') order by created_at asc")
     List<Location> selectByDeviceAndDate(@Param("deviceId") String deviceId,
                                          @Param("start") LocalDateTime start,
                                          @Param("end") LocalDateTime end);
