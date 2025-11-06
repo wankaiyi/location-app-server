@@ -1,13 +1,13 @@
 package com.wky.controller;
 
+import cn.hutool.json.JSONConfig;
 import cn.hutool.json.JSONUtil;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.wky.dto.LocationDTO;
 import com.wky.dto.LocationIn;
 import com.wky.entity.Location;
-import com.wky.dto.LocationDTO;
 import com.wky.mapper.LocationMapper;
-import com.wky.tools.DateTimeTools;
 import com.wky.tools.MapTools;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +25,6 @@ import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.support.ToolCallbacks;
-import org.springframework.ai.util.JacksonUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -60,7 +59,9 @@ public class LocationController {
             .expireAfterWrite(1, TimeUnit.MINUTES) // 1分钟后自动过期
             .concurrencyLevel(Runtime.getRuntime().availableProcessors())
             .build();
-
+    private final JSONConfig config = JSONConfig.create()
+            .setDateFormat("yyyy-MM-dd HH:mm:ss")
+            .setIgnoreNullValue(false);
 
     /**
      * 检查是否在同一分钟内已经处理过相同标识的请求
@@ -122,7 +123,7 @@ public class LocationController {
                     你是人生足迹APP的智能助手，你的任务是分析用户的轨迹数据，并给出一个总结报告。
                     
                     # 任务
-                    以下是用户{currentDate}的轨迹数据，用户所在时区为东八区。这个数据是一个list，每个list的元素item包含经纬度和时间，你需要根据以下数据来进行分析，总结用户的生活习惯，为用户提供更加智能的服务。
+                    以下是用户{currentDate}的轨迹数据，这个数据是一个list，每个list的元素item包含经纬度和时间，你需要根据以下数据来进行分析，总结用户的生活习惯，为用户提供更加智能的服务。
                     
                     {locations}
                     
@@ -158,7 +159,7 @@ public class LocationController {
                 .build();
         String systemMessageContent = promptTemplate.render(Map.of(
                 "currentDate", LocalDate.now().toString(),
-                "locations", JSONUtil.toJsonStr(locationDTOS)
+                "locations", JSONUtil.toJsonStr(locationDTOS, config)
         ));
         SystemMessage systemMessage = new SystemMessage(systemMessageContent);
         Prompt prompt = new Prompt(systemMessage, chatOptions);
