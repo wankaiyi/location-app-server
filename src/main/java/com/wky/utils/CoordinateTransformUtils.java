@@ -1,5 +1,7 @@
 package com.wky.utils;
 
+import java.util.Arrays;
+
 /**
  * @author wky
  * @date 2025/11/06
@@ -95,5 +97,9 @@ public class CoordinateTransformUtils {
             return true;
         }
         return false;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(Arrays.toString(gcj02ToWgs84(39.972201, 116.436402)));
     }
 }
